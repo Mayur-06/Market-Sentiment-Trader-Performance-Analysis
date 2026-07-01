@@ -1,141 +1,72 @@
-# 📊 Market Sentiment & Trader Performance
+# Market Sentiment & Trader Performance — Methodology
 
-**Do Bitcoin Fear/Greed cycles actually predict how traders perform?**
-An analysis of ~130K+ Hyperliquid trades against the Bitcoin Fear & Greed Index — uncovering behavioral patterns, risk-taking cycles, and trader archetypes hidden beneath the headline numbers.
-
-![Mean Daily PnL by Sentiment](assets/mean_pnl_by_sentiment.png)
+Analysis of Hyperliquid trading activity against the Bitcoin Fear & Greed Index, exploring how market sentiment relates to trader behavior and performance.
 
 ---
 
-## 🔍 TL;DR — Key Findings
+## Data
 
-| # | Finding | Evidence |
-|---|---|---|
-| 1 | Average PnL is highest in **Extreme Fear**, lowest in **Neutral/Greed** | Kruskal-Wallis p = 0.00035 |
-| 2 | Win rate and PnL **diverge** — Extreme Greed wins more often, Extreme Fear wins bigger | Win rate: 38.8% vs 36.7% |
-| 3 | High leverage peaks in **ordinary Greed** (25.3%), not Extreme Greed (19.1%) | Chi² p ≈ 1.1×10⁻¹⁹² |
-| 4 | **Mean ≠ Median** — a handful of whale accounts drive the "Fear wins" story; the typical trader does slightly better in Greed | Median lag-1: Extreme Greed $354 vs Extreme Fear $262 |
-| 5 | Clustering reveals distinct trader archetypes — "Fear Whales," "Greed Specialists," and a large balanced core population | k=5, silhouette 0.230 |
-
-📄 **[Read the full report →](Sentiment_Trader_Performance_Report.docx)**
-
----
-
-## 🗂️ Datasets
-
-**1. Bitcoin Market Sentiment (Fear & Greed Index)**
+**1. Bitcoin Fear & Greed Index**
 | Column | Description |
 |---|---|
 | `date` | Calendar date (UTC) |
 | `value` | Sentiment score, 0–100 |
 | `classification` | Extreme Fear / Fear / Neutral / Greed / Extreme Greed |
 
-**2. Historical Trader Data (Hyperliquid)**
+**2. Hyperliquid Historical Trades**
 | Column | Description |
 |---|---|
 | `account` | Trader wallet address |
-| `symbol` / `coin` | Traded asset |
+| `coin` / `symbol` | Traded asset |
 | `execution price`, `size`, `side` | Trade mechanics |
 | `closedPnL` | Realized profit/loss |
 | `leverage`, `start position` | Risk & position context |
 | `time` | Trade timestamp (IST) |
 
-> ⚠️ **Timezone note:** trade timestamps are IST; sentiment is UTC-daily. Both are reconciled during preprocessing to avoid mislabeling trades against the wrong sentiment day.
+Trade timestamps are in IST; the sentiment index is UTC-daily. This mismatch is resolved during preprocessing so trades are matched to the correct sentiment day rather than shifted by a few hours across the date boundary.
 
 ---
 
-## 🧠 Methodology
+## Approach
 
-1. **Data prep** — timezone-aligned join, aggregation to trade / account-day / account-overall / coin-day levels
-2. **Feature engineering** — win/loss flag, leverage buckets, position-sizing conviction (std dev of trade size vs. account baseline), Fear-vs-Greed win-rate gap
-3. **Statistical testing** — Kruskal-Wallis (PnL across sentiment classes), Chi-square (leverage vs. sentiment association)
-4. **Lag analysis** — sentiment shifted 1/3/7 days to test predictive persistence, validated with mean **and** median to control for fat-tailed outliers
-5. **Behavioral segmentation** — K-Means clustering (k=5, standardized features) on PnL, conviction, and sentiment-driven win-rate bias
+### 1. Data preparation
+- Convert trade timestamps from IST to UTC before joining on date, to avoid mislabeling trades against the wrong sentiment day.
+- Aggregate the joined data at four granularities, each answering a different question:
+  - **Per trade** — fine-grained pattern mining
+  - **Per account-day** — the core unit for sentiment-vs-performance comparisons
+  - **Per account (overall)** — trader-level profiling and segmentation
+  - **Per coin-day** — sentiment sensitivity by asset
 
----
+### 2. Feature engineering
+- `win` — binary flag from `closedPnL > 0`
+- `leverage_bucket` — Low / Medium / High, for clean cross-tabs instead of noisy raw values
+- `position_sizing_pct` — standard deviation of trade size relative to an account's own average trade size, used as a proxy for conviction/outsized bets
+- `win_rate_fear`, `win_rate_greed`, `fear_greed_win_gap` — per-account win rate split by sentiment regime, used to detect behavioral bias toward Fear or Greed conditions
 
-## 📈 Visual Highlights
+### 3. Statistical testing
+- **Kruskal-Wallis test** on daily PnL across sentiment classes — chosen over ANOVA because PnL is heavily skewed/fat-tailed, and the test doesn't assume normality.
+- **Chi-square test** on the leverage-bucket × sentiment-class crosstab, to confirm whether risk-taking patterns across regimes are statistically meaningful rather than incidental.
+- **Mean vs. median comparison** on all PnL aggregates — included after the mean was found to be heavily distorted by a small number of outlier accounts; median is reported alongside mean throughout to avoid overstating effects driven by a handful of large trades.
 
-<table>
-<tr>
-<td><img src="assets/win_rate_by_sentiment.png" width="400"/></td>
-<td><img src="assets/leverage_by_sentiment.png" width="400"/></td>
-</tr>
-<tr>
-<td align="center"><i>Win rate vs. PnL diverge across regimes</i></td>
-<td align="center"><i>Leverage risk peaks in ordinary Greed</i></td>
-</tr>
-<tr>
-<td><img src="assets/mean_vs_median_lag1.png" width="400"/></td>
-<td><img src="assets/scatter_archetypes.png" width="400"/></td>
-</tr>
-<tr>
-<td align="center"><i>Mean vs. median exposes whale-driven skew</i></td>
-<td align="center"><i>Trader archetypes: Fear vs. Greed win rate</i></td>
-</tr>
-</table>
+### 4. Lag analysis
+- Sentiment shifted by 1, 3, and 7 days relative to trading activity, to test whether sentiment's effect on performance persists or predicts forward rather than only reflecting same-day conditions.
+- Sample size and standard deviation checked at each lag before drawing conclusions — some longer-lag patterns were found to be driven by shrinking, outlier-sensitive buckets rather than a genuine persistent effect, and were treated accordingly.
 
----
-
-## 🧩 Trader Archetypes
-
-| Cluster | Accounts | Avg Net PnL | Fear–Greed Gap | Archetype |
-|---|---|---|---|---|
-| 3 | 2 | $1.86M | +0.134 | **Fear Whales** |
-| 0 | 2 | $654K | −0.083 | Greed-Leaning Elite |
-| 1 | 8 | $210K | +0.043 | Mild Fear Tilt, High Conviction |
-| 2 | 15 | $177K | +0.068 | **Core Population** (Balanced/Fear-Leaning) |
-| 4 | 5 | $137K | −0.327 | Greed Specialists |
-
-> Clusters 0, 3, and 4 are small (n=2–5) and best read as case studies rather than statistically robust segments.
+### 5. Behavioral segmentation
+- **K-Means clustering** on standardized account-level features: net PnL, position-sizing conviction, and the Fear-vs-Greed win-rate gap.
+- Cluster count selected using silhouette score across k=2–6, rather than an arbitrary default.
+- Resulting clusters profiled by mean feature values and account count, distinguishing large, generalizable segments from small clusters that represent individual notable accounts rather than a statistically robust population.
 
 ---
 
-## 📁 Repo Structure
+## Tools
 
-```
-├── data/
-│   ├── fear_greed_index.csv
-│   └── hyperliquid_trades.csv
-├── notebooks/
-│   └── sentiment_trader_analysis.ipynb
-├── assets/                          # charts used in this README / report
-├── Sentiment_Trader_Performance_Report.docx
-└── README.md
-```
+`pandas`, `numpy`, `scikit-learn` (KMeans, StandardScaler, silhouette_score), `scipy.stats` (kruskal, chi2_contingency), `matplotlib`
 
 ---
 
-## ⚙️ Setup & Reproduction
+## Notes on rigor
 
-```bash
-git clone https://github.com/<your-username>/<repo-name>.git
-cd <repo-name>
-pip install -r requirements.txt
-jupyter notebook notebooks/sentiment_trader_analysis.ipynb
-```
-
-**Core dependencies:** `pandas`, `numpy`, `scikit-learn`, `scipy`, `matplotlib`, `seaborn`
-
----
-
-## ⚠️ Limitations
-
-- Small cluster sizes (n=2–5) for the most distinctive segments limit statistical generalizability
-- PnL is heavily fat-tailed — mean-based comparisons are reported alongside medians throughout
-- Lag effects beyond 1 day are less stable due to shifting outlier composition
-- Single historical window — regime relationships may not generalize to other market cycles
-
----
-
-## 💡 Actionable Takeaways
-
-- **Risk monitoring:** ordinary Greed, not Extreme Greed, is the highest-risk leverage window
-- **Strategy design:** high-conviction sizing during Fear regimes shows a real, persistent edge for top accounts
-- **Evaluation:** benchmark "typical" trader performance with median PnL, not mean
-
----
-
-## 📜 License
-
-MIT — feel free to fork, extend, or build on this analysis.
+- Every headline comparison is backed by a significance test, not just a visual difference in bar heights.
+- Mean-based findings are cross-checked against the median wherever the underlying distribution is suspected (or shown) to be skewed.
+- Cluster and lag findings are reported with their sample sizes so that small, outlier-driven segments aren't mistaken for broad population trends.
